@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Realtime Earth — 实时地球追踪</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%2322d3ee'/></svg>" />
+  <!-- Cesium CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.121.0/Build/Cesium/Widgets/widgets.css" />
+  <!-- Cesium JS -->
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.121.0/Build/Cesium/Cesium.js"></script>
+  <!-- Vue 3 (production) -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.12/dist/vue.global.prod.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    html, body, #app { height: 100%; margin: 0; background: #050a18; color: #e2e8f0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+    .panel { background: rgba(16, 26, 46, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(34, 211, 238, 0.2); border-radius: 0.5rem; box-shadow: 0 0 20px rgba(34, 211, 238, 0.15); }
+    .panel-title { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(34, 211, 238, 0.9); margin-bottom: 0.5rem; }
+    .pill { display: inline-flex; align-items: center; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .pill-ok { background: rgba(16, 185, 129, 0.15); color: rgb(110, 231, 183); }
+    .pill-err { background: rgba(244, 63, 94, 0.15); color: rgb(253, 164, 175); }
+    .stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgb(148, 163, 184); }
+    .stat-value { font-size: 1.1rem; font-weight: 600; font-family: ui-monospace, monospace; color: rgb(241, 245, 249); }
+    .tab { padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.7rem; font-weight: 500; cursor: pointer; border: 1px solid transparent; white-space: nowrap; }
+    .tab-active { background: rgba(34, 211, 238, 0.15); color: rgb(165, 243, 252); border-color: rgba(34, 211, 238, 0.3); }
+    .tab-inactive { color: rgb(148, 163, 184); }
+    .tab-inactive:hover { color: rgb(226, 232, 240); }
+    .btn-close { background: transparent; border: 0; color: rgb(148, 163, 184); font-size: 1.25rem; line-height: 1; cursor: pointer; }
+    .btn-close:hover { color: rgb(226, 232, 240); }
+    .scroll-y { overflow-y: auto; }
+    .scroll-y::-webkit-scrollbar { width: 6px; }
+    .scroll-y::-webkit-scrollbar-track { background: transparent; }
+    .scroll-y::-webkit-scrollbar-thumb { background: rgba(34, 211, 238, 0.25); border-radius: 3px; }
+    .row { padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; }
+    .row:hover { background: rgba(34, 211, 238, 0.1); }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; display: inline-block; }
+    .dot-ok { background: rgb(52, 211, 153); }
+    .dot-err { background: rgb(251, 113, 133); }
+    .mag-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; border-radius: 0.25rem; font-family: ui-monospace, monospace; font-size: 0.7rem; font-weight: 600; flex-shrink: 0; }
+    .mag-big { background: rgba(244, 63, 94, 0.2); color: rgb(254, 205, 211); border: 1px solid rgba(244, 63, 94, 0.3); }
+    .mag-med { background: rgba(249, 115, 22, 0.15); color: rgb(254, 215, 170); border: 1px solid rgba(249, 115, 22, 0.3); }
+    .mag-low { background: rgba(71, 85, 105, 0.5); color: rgb(226, 232, 240); border: 1px solid rgba(100, 116, 139, 0.3); }
+    /* Cesium custom */
+    .cesium-viewer-bottom, .cesium-viewer-toolbar { display: none !important; }
+    .cesium-credit-textContainer, .cesium-credit-logoContainer, .cesium-viewer .cesium-widget-credits { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Top Bar -->
+    <header class="panel" style="position: absolute; top: 0; left: 0; right: 0; z-index: 30; padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.75rem; border-radius: 0; border-left: 0; border-right: 0; border-top: 0;">
+      <div style="height: 1.75rem; width: 1.75rem; border-radius: 999px; background: linear-gradient(135deg, #22d3ee, #1d4ed8); box-shadow: 0 0 20px rgba(34, 211, 238, 0.4);"></div>
+      <div>
+        <div style="font-size: 0.875rem; font-weight: 600; color: rgb(241, 245, 249);">Realtime Earth</div>
+        <div style="font-size: 0.65rem; color: rgb(148, 163, 184); margin-top: -0.125rem;">实时追踪公开数据 · v{{ version }}</div>
+      </div>
+      <div style="flex: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem;">
+        <span style="color: rgb(148, 163, 184);">运行</span>
+        <span style="font-family: ui-monospace, monospace; color: rgb(226, 232, 240);">{{ uptime }}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem;">
+        <span :class="wsConnected ? 'dot dot-ok' : 'dot dot-err'" :style="wsConnected ? 'animation: pulse 2s infinite' : ''"></span>
+        <span style="color: rgb(203, 213, 225);">{{ wsConnected ? '实时连接' : '已断开' }}</span>
+      </div>
+    </header>
+
+    <!-- Cesium Globe -->
+    <div ref="globeEl" style="position: absolute; inset: 0;"></div>
+
+    <!-- Sidebar -->
+    <aside class="panel scroll-y" style="position: absolute; top: 4rem; left: 0.75rem; bottom: 2.5rem; z-index: 20; width: 20rem; max-width: 90vw; display: flex; flex-direction: column;">
+      <nav style="display: flex; align-items: center; gap: 0.25rem; padding: 0.4rem 0.5rem; border-bottom: 1px solid rgba(34, 211, 238, 0.15); overflow-x: auto; flex-shrink: 0;">
+        <button v-for="t in tabs" :key="t.id" @click="tab = t.id" :class="['tab', tab === t.id ? 'tab-active' : 'tab-inactive']">
+          <span style="margin-right: 0.25rem;">{{ t.icon }}</span>{{ t.label }}
+        </button>
+      </nav>
+      <div style="flex: 1; overflow-y: auto; padding: 0.75rem;" class="scroll-y">
+        <!-- Satellites panel -->
+        <div v-if="tab === 'satellites'">
+          <div class="panel-title">重点卫星</div>
+          <div v-for="sat in prominentSatellites" :key="sat.id" class="row" style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.5rem; margin-bottom: 0.25rem; background: rgba(11, 18, 32, 0.6); border: 1px solid transparent; border-radius: 0.375rem;" @click="select(sat)">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 500; color: rgb(241, 245, 249);">{{ sat.name }}</div>
+              <div v-if="sat.position" style="font-size: 0.65rem; color: rgb(148, 163, 184); font-family: ui-monospace, monospace; margin-top: 0.125rem;">
+                {{ sat.position.lat.toFixed(2) }}°, {{ sat.position.lon.toFixed(2) }}° · {{ sat.position.alt_km.toFixed(0) }} km
+              </div>
+            </div>
+            <span :class="sat.category === 'hubble' ? 'pill' : 'pill pill-ok'" :style="sat.category === 'hubble' ? 'background: rgba(217, 70, 239, 0.15); color: rgb(240, 171, 252);' : ''">
+              {{ categoryLabel(sat.category) }}
+            </span>
+          </div>
+          <div class="panel-title" style="margin-top: 0.75rem;">所有卫星 ({{ satellites.length }})</div>
+          <div class="scroll-y" style="max-height: 12rem; font-size: 0.7rem;">
+            <div v-for="sat in satellites.slice(0, 100)" :key="sat.id" class="row" @click="select(sat)" style="padding: 0.25rem 0.5rem;">
+              {{ sat.name }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Lightning panel -->
+        <div v-else-if="tab === 'lightning'">
+          <div class="panel-title">实时窗口 ({{ windowMin }} 分钟)</div>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.25rem; margin-bottom: 0.75rem;">
+            <button v-for="m in [5, 10, 30, 60]" :key="m" @click="windowMin = m" :class="['tab', windowMin === m ? 'tab-active' : 'tab-inactive']" style="text-align: center;">{{ m }}分</button>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">闪电数</div>
+              <div class="stat-value">{{ lightningStats.total.toLocaleString() }}</div>
+              <div style="font-size: 0.65rem; color: rgb(148, 163, 184);">{{ lightningStats.perMin.toFixed(1) }}/分钟</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">正 / 负</div>
+              <div class="stat-value" style="font-size: 0.95rem;">
+                <span style="color: rgb(253, 186, 116);">{{ lightningStats.pos }}</span>
+                <span style="color: rgb(100, 116, 139); margin: 0 0.25rem;">/</span>
+                <span style="color: rgb(125, 211, 252);">{{ lightningStats.neg }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="panel-title">最近 50 次</div>
+          <div class="scroll-y" style="max-height: 18rem; font-size: 0.7rem; font-family: ui-monospace, monospace;">
+            <div v-for="s in latestLightning" :key="s.id" style="display: flex; justify-content: space-between; padding: 0.2rem 0.5rem; border-radius: 0.25rem;">
+              <span style="color: rgb(148, 163, 184); width: 4rem;">{{ formatTime(s.time) }}</span>
+              <span :style="s.polarity === 'positive' ? 'color: rgb(251, 146, 60); width: 1rem;' : s.polarity === 'negative' ? 'color: rgb(96, 165, 250); width: 1rem;' : 'color: rgb(100, 116, 139); width: 1rem;'">
+                {{ s.polarity === 'positive' ? '+' : s.polarity === 'negative' ? '−' : '·' }}
+              </span>
+              <span style="color: rgb(226, 232, 240); width: 3rem; text-align: right;">{{ s.amplitude_ka ? s.amplitude_ka.toFixed(1) : '—' }}</span>
+              <span style="color: rgb(100, 116, 139); width: 3rem; text-align: right; text-transform: uppercase;">{{ s.region || '?' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Earth panel -->
+        <div v-else-if="tab === 'earth'">
+          <div style="display: flex; gap: 0.25rem; margin-bottom: 0.5rem;">
+            <button v-for="t in ['earthquakes', 'wildfires', 'volcanoes']" :key="t" @click="earthTab = t" :class="['tab', earthTab === t ? 'tab-active' : 'tab-inactive']" style="flex: 1; text-align: center; text-transform: uppercase;">{{ earthLabel(t) }}</button>
+          </div>
+
+          <div v-if="earthTab === 'earthquakes'">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 0.75rem;">
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">24小时</div>
+                <div class="stat-value">{{ eqStats.last24 }}</div>
+              </div>
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">最大 M</div>
+                <div class="stat-value" style="color: rgb(252, 165, 165);">{{ eqStats.maxMag24.toFixed(1) }}</div>
+              </div>
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">海啸警报</div>
+                <div class="stat-value">{{ eqStats.tsunami }}</div>
+              </div>
+            </div>
+            <div class="panel-title">最近地震 ({{ filteredEqs.length }})</div>
+            <div class="scroll-y" style="max-height: 20rem;">
+              <div v-for="eq in filteredEqs.slice(0, 50)" :key="eq.id" class="row" @click="selectEq(eq)" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; margin-bottom: 0.125rem;">
+                <span :class="['mag-pill', eq.mag >= 6 ? 'mag-big' : eq.mag >= 4.5 ? 'mag-med' : 'mag-low']">{{ eq.mag.toFixed(1) }}</span>
+                <div style="flex: 1; min-width: 0; overflow: hidden;">
+                  <div style="font-size: 0.7rem; color: rgb(241, 245, 249); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ eq.place }}</div>
+                  <div style="font-size: 0.65rem; color: rgb(100, 116, 139);">{{ timeAgo(eq.time) }} · {{ eq.depth_km.toFixed(0) }}km</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="earthTab === 'wildfires'">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">火点总数</div>
+                <div class="stat-value">{{ wildfires.length.toLocaleString() }}</div>
+              </div>
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">总功率</div>
+                <div class="stat-value">{{ (wildfireStats.totalFrp / 1000).toFixed(1) }} GW</div>
+              </div>
+            </div>
+            <div class="panel-title">高强度火点 (FRP &gt; 100MW)</div>
+            <div class="scroll-y" style="max-height: 20rem; font-size: 0.7rem; font-family: ui-monospace, monospace;">
+              <div v-for="f in bigFires" :key="f.id" style="display: flex; justify-content: space-between; padding: 0.2rem 0.5rem; border-radius: 0.25rem;">
+                <span style="color: rgb(148, 163, 184); width: 5rem;">{{ f.acq_date }} {{ f.acq_time }}</span>
+                <span :style="f.confidence === 'high' ? 'color: rgb(252, 211, 77); width: 4rem; text-align: right;' : 'color: rgb(203, 213, 225); width: 4rem; text-align: right;'">{{ f.frp_mw.toFixed(0) }} MW</span>
+                <span style="color: rgb(100, 116, 139); width: 2.5rem; text-align: right;">{{ f.satellite }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-else>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">🌋 喷发中</div>
+                <div class="stat-value" style="color: rgb(252, 165, 165);">{{ eruptingVolcanoes.length }}</div>
+              </div>
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">🔶 活跃</div>
+                <div class="stat-value" style="color: rgb(252, 211, 77);">{{ elevatedVolcanoes.length }}</div>
+              </div>
+            </div>
+            <div v-if="eruptingVolcanoes.length">
+              <div class="panel-title">🌋 正在喷发</div>
+              <div v-for="v in eruptingVolcanoes.slice(0, 20)" :key="v.id" class="row" @click="selectVolcano(v)" style="display: flex; justify-content: space-between; font-size: 0.7rem; padding: 0.25rem 0.5rem;">
+                <span style="color: rgb(254, 205, 211);">{{ v.name }}</span>
+                <span style="color: rgb(100, 116, 139);">{{ v.country }}</span>
+              </div>
+            </div>
+            <div v-if="elevatedVolcanoes.length" style="margin-top: 0.5rem;">
+              <div class="panel-title">🔶 活跃</div>
+              <div v-for="v in elevatedVolcanoes.slice(0, 20)" :key="v.id" class="row" @click="selectVolcano(v)" style="display: flex; justify-content: space-between; font-size: 0.7rem; padding: 0.25rem 0.5rem;">
+                <span style="color: rgb(254, 215, 170);">{{ v.name }}</span>
+                <span style="color: rgb(100, 116, 139);">{{ v.country }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solar panel -->
+        <div v-else-if="tab === 'solar'">
+          <div v-if="solar" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <div v-if="solar.sdo_image_url" style="border-radius: 0.5rem; overflow: hidden; border: 1px solid rgba(34, 211, 238, 0.2); background: black;">
+              <img :src="solar.sdo_image_url + '?t=' + Date.now()" alt="SDO 太阳图像" style="width: 100%; height: auto; display: block;" />
+              <div style="padding: 0.25rem 0.5rem; font-size: 0.65rem; color: rgb(148, 163, 184); background: rgba(11, 18, 32, 0.6);">SDO / HMI · NASA · 实时刷新</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">Kp 指数</div>
+                <div class="stat-value" :class="kpColor">{{ solar.kp_index?.toFixed(1) ?? '—' }}</div>
+                <div style="font-size: 0.65rem; color: rgb(148, 163, 184);">{{ solar.kp_text || '—' }}</div>
+              </div>
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">太阳黑子</div>
+                <div class="stat-value">{{ solar.sunspot_number ?? '—' }}</div>
+                <div style="font-size: 0.65rem; color: rgb(148, 163, 184);">SILSO / SWPC</div>
+              </div>
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">太阳风</div>
+                <div class="stat-value" style="color: rgb(165, 243, 252);">{{ solar.solar_wind_speed_kms?.toFixed(0) ?? '—' }}</div>
+                <div style="font-size: 0.65rem; color: rgb(148, 163, 184);">km/s</div>
+              </div>
+              <div class="panel" style="padding: 0.5rem;">
+                <div class="stat-label">X 射线</div>
+                <div class="stat-value" style="color: rgb(240, 171, 252);">{{ solar.xray_class ?? '—' }}</div>
+                <div style="font-size: 0.65rem; color: rgb(148, 163, 184);">GOES 主</div>
+              </div>
+            </div>
+            <div v-if="solar.aurora_probability_north" class="panel" style="padding: 0.5rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                <span class="stat-label">北极光概率</span>
+                <span style="font-size: 0.7rem; font-family: ui-monospace, monospace; color: rgb(165, 243, 252);">{{ Math.round(solar.aurora_probability_north * 100) }}%</span>
+              </div>
+              <div style="height: 0.5rem; border-radius: 999px; background: rgba(11, 18, 32, 1); overflow: hidden;">
+                <div :style="`height: 100%; width: ${solar.aurora_probability_north * 100}%; background: ${auroraBar >= 60 ? 'rgb(251, 113, 133)' : auroraBar >= 30 ? 'rgb(252, 211, 77)' : 'rgb(34, 211, 238)'}; transition: all 0.5s;`"></div>
+              </div>
+            </div>
+          </div>
+          <div v-else style="color: rgb(100, 116, 139); font-size: 0.75rem;">加载中...</div>
+        </div>
+
+        <!-- Layers panel -->
+        <div v-else>
+          <div class="panel-title">可见图层</div>
+          <div v-for="layer in layerDefs" :key="layer.key" style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.4rem 0.5rem; border-radius: 0.25rem; cursor: pointer;" @click="toggleLayer(layer.key)">
+            <input type="checkbox" :checked="layers[layer.key]" @click.stop="toggleLayer(layer.key)" style="margin-top: 0.125rem; accent-color: rgb(34, 211, 238);" />
+            <div style="flex: 1;">
+              <div style="font-size: 0.75rem; font-weight: 500;" :class="layer.color">{{ layer.label }}</div>
+              <div style="font-size: 0.65rem; color: rgb(100, 116, 139);">{{ layer.desc }}</div>
+            </div>
+          </div>
+          <div style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid rgba(34, 211, 238, 0.15); font-size: 0.65rem; color: rgb(100, 116, 139);">
+            <p style="margin: 0.25rem 0;"><kbd style="background: rgba(11, 18, 32, 1); padding: 0.05rem 0.25rem; border-radius: 0.125rem;">Esc</kbd> 关闭详情</p>
+            <p style="margin: 0.25rem 0;">拖动旋转 · 滚轮缩放 · 右键倾斜</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Detail Panel -->
+    <aside v-if="selected" class="panel scroll-y" style="position: absolute; top: 4rem; right: 0.75rem; bottom: 2.5rem; z-index: 20; width: 24rem; max-width: 90vw; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.75rem; border-bottom: 1px solid rgba(34, 211, 238, 0.15); flex-shrink: 0;">
+        <span class="panel-title" style="margin: 0;">详情</span>
+        <button class="btn-close" @click="clearSelection">×</button>
+      </div>
+      <div style="padding: 0.75rem; flex: 1; overflow-y: auto;" class="scroll-y">
+        <!-- Satellite detail -->
+        <div v-if="selectedType === 'satellite'">
+          <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(34, 211, 238, 0.8);">{{ selected.category }}</div>
+          <div style="font-size: 1.1rem; font-weight: 600; color: rgb(241, 245, 249); line-height: 1.2;">{{ selected.name }}</div>
+          <div style="font-size: 0.7rem; color: rgb(100, 116, 139); font-family: ui-monospace, monospace; margin-top: 0.125rem;">NORAD {{ selected.id }}</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.75rem;">
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">纬度</div>
+              <div class="stat-value">{{ selected.position?.lat.toFixed(2) }}°</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">经度</div>
+              <div class="stat-value">{{ selected.position?.lon.toFixed(2) }}°</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">高度</div>
+              <div class="stat-value">{{ selected.position?.alt_km.toFixed(0) }}</div>
+              <div style="font-size: 0.65rem; color: rgb(100, 116, 139);">km</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">速度</div>
+              <div class="stat-value">{{ selected.position?.velocity_kms.toFixed(2) }}</div>
+              <div style="font-size: 0.65rem; color: rgb(100, 116, 139);">km/s</div>
+            </div>
+          </div>
+          <div v-if="selected.position" class="panel" style="padding: 0.5rem; margin-top: 0.5rem;">
+            <div class="stat-label">轨道周期(估算)</div>
+            <div class="stat-value">{{ orbitMinutes(selected) }} 分钟</div>
+          </div>
+        </div>
+
+        <!-- Earthquake detail -->
+        <div v-else-if="selectedType === 'earthquake'">
+          <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(252, 165, 165, 0.8);">地震 · {{ magClass(selected.mag) }}</div>
+          <div style="font-size: 0.95rem; font-weight: 600; color: rgb(241, 245, 249); line-height: 1.2;">M {{ selected.mag.toFixed(1) }} — {{ selected.place }}</div>
+          <div style="font-size: 0.7rem; color: rgb(100, 116, 139); font-family: ui-monospace, monospace; margin-top: 0.125rem;">{{ formatTime(selected.time) }}</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.75rem;">
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">深度</div>
+              <div class="stat-value">{{ selected.depth_km.toFixed(1) }} km</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">感受到</div>
+              <div class="stat-value">{{ selected.felt ?? '—' }}</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">海啸</div>
+              <div :class="['stat-value', selected.tsunami ? 'mag-pill mag-big' : '']" :style="selected.tsunami ? '' : 'color: rgb(226, 232, 240);'">{{ selected.tsunami ? '是' : '否' }}</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">警报等级</div>
+              <div class="stat-value" style="font-size: 0.7rem; text-transform: uppercase;">{{ selected.alert || '—' }}</div>
+            </div>
+          </div>
+          <a :href="selected.url" target="_blank" rel="noopener" class="row" style="display: block; text-align: center; padding: 0.5rem; margin-top: 0.5rem; background: rgba(34, 211, 238, 0.15); color: rgb(165, 243, 252); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 0.375rem; text-decoration: none; font-size: 0.75rem; font-weight: 500;">在 USGS 查看 ↗</a>
+        </div>
+
+        <!-- Volcano detail -->
+        <div v-else-if="selectedType === 'volcano'">
+          <div :class="['pill', selected.activity_level === 'erupting' ? 'pill-err' : selected.activity_level === 'elevated' ? 'pill' : 'pill']" :style="`display: inline-block; margin-bottom: 0.5rem; padding: 0.15rem 0.5rem; background: ${selected.activity_level === 'erupting' ? 'rgba(244, 63, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)'}; color: ${selected.activity_level === 'erupting' ? 'rgb(254, 205, 211)' : 'rgb(254, 215, 170)'};`">
+            {{ selected.activity_level === 'erupting' ? '🌋 正在喷发' : selected.activity_level === 'elevated' ? '🔶 活跃' : '正常' }}
+          </div>
+          <div style="font-size: 1.1rem; font-weight: 600; color: rgb(241, 245, 249); line-height: 1.2;">🌋 {{ selected.name }}</div>
+          <div style="font-size: 0.7rem; color: rgb(100, 116, 139); margin-top: 0.125rem;">{{ selected.country }}</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.75rem;">
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">海拔</div>
+              <div class="stat-value">{{ selected.elevation_m }} m</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">最近喷发</div>
+              <div class="stat-value">{{ selected.last_known_eruption || '—' }}</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">纬度</div>
+              <div class="stat-value">{{ selected.lat.toFixed(2) }}°</div>
+            </div>
+            <div class="panel" style="padding: 0.5rem;">
+              <div class="stat-label">经度</div>
+              <div class="stat-value">{{ selected.lon.toFixed(2) }}°</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Status Bar -->
+    <footer class="panel" style="position: absolute; bottom: 0; left: 0; right: 0; z-index: 30; padding: 0.4rem 0.75rem; display: flex; align-items: center; gap: 0.75rem; font-size: 0.65rem; color: rgb(148, 163, 184); border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;">
+      <span style="font-weight: 600; color: rgb(203, 213, 225);">数据源</span>
+      <div style="display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; flex: 1;">
+        <div v-for="s in sources" :key="s.name" style="display: flex; align-items: center; gap: 0.375rem; white-space: nowrap;">
+          <span :class="s.ok ? 'dot dot-ok' : 'dot dot-err'"></span>
+          <span style="text-transform: uppercase; letter-spacing: 0.05em;">{{ s.name }}</span>
+          <span style="font-family: ui-monospace, monospace; color: rgb(226, 232, 240);">{{ s.items }}</span>
+        </div>
+      </div>
+      <div style="color: rgb(100, 116, 139); white-space: nowrap;">⚡ {{ recentLightningCount }} 闪/5分 · 🌋 {{ eruptingVolcanoes.length }} 喷发中</div>
+    </footer>
+  </div>
+
+  <style>
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+
+  <script>
+    const { createApp, ref, computed, onMounted, onBeforeUnmount, watch, shallowRef } = Vue;
+
+    // ---- Cesium setup (no Ion token) ----
+    Cesium.Ion.defaultAccessToken = '';
+    window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.121.0/Build/Cesium/';
+
+    // ---- App ----
+    const app = createApp({
+      setup() {
+        const wsConnected = ref(false);
+        const wsLastMessage = ref(null);
+        const uptime = ref(0);
+        const version = ref('0.1.0');
+        const sources = ref({});
+        const counts = ref({});
+        const satellites = ref([]);
+        const lightning = ref([]);
+        const earthquakes = ref([]);
+        const wildfires = ref([]);
+        const volcanoes = ref([]);
+        const solar = ref(null);
+        const tab = ref('satellites');
+        const earthTab = ref('earthquakes');
+        const windowMin = ref(10);
+        const layers = ref({ satellites: true, lightning: true, earthquakes: true, wildfires: true, volcanoes: true, solar: true, satellitesOrbit: false, satellitesLabels: false });
+        const selected = ref(null);
+        const selectedType = ref(null);
+        const globeEl = ref(null);
+        const viewer = shallowRef(null);
+        let socket = null;
+        let satSource, lightSource, eqSource, fireSource, volSource, orbitSource;
+        let reconnectTimer = null;
+        let reconnectAttempt = 0;
+
+        const tabs = [
+          { id: 'satellites', label: '卫星', icon: '🛰️' },
+          { id: 'lightning', label: '闪电', icon: '⚡' },
+          { id: 'earth', label: '地球', icon: '🌋' },
+          { id: 'solar', label: '太阳', icon: '☀️' },
+          { id: 'layers', label: '图层', icon: '🗺️' },
+        ];
+
+        const layerDefs = [
+          { key: 'satellites', label: '卫星', desc: '所有追踪中的卫星', color: 'text-cyan-300' },
+          { key: 'satellitesOrbit', label: '轨道轨迹', desc: '显示轨道线', color: 'text-cyan-300' },
+          { key: 'satellitesLabels', label: '卫星名称', desc: '显示名称标签', color: 'text-cyan-300' },
+          { key: 'lightning', label: '闪电', desc: 'Blitzortung 实时数据', color: 'text-orange-300' },
+          { key: 'earthquakes', label: '地震', desc: 'USGS 实时事件', color: 'text-rose-300' },
+          { key: 'wildfires', label: '野火', desc: 'NASA FIRMS 热异常', color: 'text-amber-300' },
+          { key: 'volcanoes', label: '火山', desc: 'GVP,按活动度着色', color: 'text-rose-300' },
+        ];
+
+        // ---- derived ----
+        const prominentSatellites = computed(() => {
+          const h = ['ISS', 'TIANGONG', 'HUBBLE', 'CSS', 'HST'];
+          return satellites.value.filter(s => h.some(x => s.name.toUpperCase().includes(x)));
+        });
+
+        const lightningStats = computed(() => {
+          const cutoff = Date.now() - windowMin.value * 60 * 1000;
+          const recent = lightning.value.filter(s => new Date(s.time).getTime() >= cutoff);
+          const pos = recent.filter(s => s.polarity === 'positive').length;
+          const neg = recent.filter(s => s.polarity === 'negative').length;
+          return { total: recent.length, pos, neg, perMin: recent.length / Math.max(windowMin.value, 1) };
+        });
+
+        const latestLightning = computed(() =>
+          lightning.value.slice().sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 50)
+        );
+
+        const recentLightningCount = computed(() => {
+          const cutoff = Date.now() - 5 * 60 * 1000;
+          return lightning.value.filter(s => new Date(s.time).getTime() >= cutoff).length;
+        });
+
+        const filteredEqs = computed(() => earthquakes.value.slice(0, 100));
+
+        const eqStats = computed(() => {
+          const last24 = earthquakes.value.filter(e => Date.now() - new Date(e.time).getTime() < 86400000);
+          return {
+            last24: last24.length,
+            maxMag24: last24.reduce((m, e) => Math.max(m, e.mag), 0),
+            tsunami: last24.filter(e => e.tsunami).length,
+          };
+        });
+
+        const bigFires = computed(() =>
+          wildfires.value.filter(f => f.frp_mw > 100).sort((a, b) => b.frp_mw - a.frp_mw).slice(0, 50)
+        );
+
+        const wildfireStats = computed(() => ({
+          total: wildfires.value.length,
+          totalFrp: wildfires.value.reduce((s, f) => s + f.frp_mw, 0),
+        }));
+
+        const eruptingVolcanoes = computed(() => volcanoes.value.filter(v => v.activity_level === 'erupting'));
+        const elevatedVolcanoes = computed(() => volcanoes.value.filter(v => v.activity_level === 'elevated'));
+
+        const kpColor = computed(() => {
+          const kp = solar.value?.kp_index ?? 0;
+          if (kp >= 8) return 'text-rose-300';
+          if (kp >= 6) return 'text-orange-300';
+          if (kp >= 4) return 'text-amber-300';
+          return 'text-emerald-300';
+        });
+
+        const auroraBar = computed(() => Math.round((solar.value?.aurora_probability_north ?? 0) * 100));
+
+        // ---- helpers ----
+        const formatTime = (iso) => { try { return new Date(iso).toLocaleTimeString(); } catch { return iso; } };
+        const timeAgo = (iso) => {
+          const ms = Date.now() - new Date(iso).getTime();
+          if (ms < 60000) return Math.floor(ms / 1000) + '秒前';
+          if (ms < 3600000) return Math.floor(ms / 60000) + '分前';
+          if (ms < 86400000) return Math.floor(ms / 3600000) + '时前';
+          return Math.floor(ms / 86400000) + '天前';
+        };
+        const categoryLabel = (c) => {
+          const m = { stations: '空间站', hubble: '望远镜', webb: '望远镜', weather: '气象', scientific: '科研', amateur: '业余', other: '其他' };
+          return m[c] || c;
+        };
+        const earthLabel = (t) => ({ earthquakes: '地震', wildfires: '野火', volcanoes: '火山' }[t]);
+        const magClass = (m) => {
+          if (m >= 8) return '巨大';
+          if (m >= 7) return '大';
+          if (m >= 6) return '强';
+          if (m >= 5) return '中';
+          if (m >= 4) return '轻';
+          if (m >= 3) return '小';
+          return '微';
+        };
+        const orbitMinutes = (sat) => {
+          if (!sat?.position) return '—';
+          const r = sat.position.alt_km + 6371;
+          const v = Math.sqrt(398600.4418 / r);
+          return Math.round((2 * Math.PI * r) / v / 60);
+        };
+        const toggleLayer = (k) => { layers.value[k] = !layers.value[k]; };
+
+        // ---- selection ----
+        const select = (s) => { selected.value = s; selectedType.value = 'satellite'; };
+        const selectEq = (e) => { selected.value = e; selectedType.value = 'earthquake'; };
+        const selectVolcano = (v) => { selected.value = v; selectedType.value = 'volcano'; };
+        const clearSelection = () => { selected.value = null; };
+
+        // ---- Cesium ----
+        const initCesium = () => {
+          if (!globeEl.value) return;
+          viewer.value = new Cesium.Viewer(globeEl.value, {
+            baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+              Cesium.OpenStreetMapImageryProvider.fromUrl('https://tile.openstreetmap.org/')
+            ),
+            baseLayerPicker: false,
+            geocoder: false,
+            homeButton: false,
+            sceneModePicker: false,
+            timeline: false,
+            animation: false,
+            fullscreenButton: false,
+            navigationHelpButton: false,
+            selectionIndicator: false,
+            infoBox: false,
+            shouldAnimate: true,
+          });
+          const scene = viewer.value.scene;
+          scene.skyAtmosphere.show = true;
+          scene.fog.enabled = false;
+          scene.globe.enableLighting = false;
+          scene.backgroundColor = Cesium.Color.fromCssColorString('#050a18');
+
+          viewer.value.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(105, 25, 22000000),
+            duration: 0,
+          });
+
+          satSource = new Cesium.CustomDataSource('sats');
+          orbitSource = new Cesium.CustomDataSource('orbits');
+          lightSource = new Cesium.CustomDataSource('lightning');
+          eqSource = new Cesium.CustomDataSource('earthquakes');
+          fireSource = new Cesium.CustomDataSource('wildfires');
+          volSource = new Cesium.CustomDataSource('volcanoes');
+          viewer.value.dataSources.add(satSource);
+          viewer.value.dataSources.add(orbitSource);
+          viewer.value.dataSources.add(lightSource);
+          viewer.value.dataSources.add(eqSource);
+          viewer.value.dataSources.add(fireSource);
+          viewer.value.dataSources.add(volSource);
+
+          // Click → select
+          const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
+          handler.setInputAction((click) => {
+            const picked = scene.pick(click.position);
+            if (Cesium.defined(picked) && picked.id) {
+              const eid = picked.id.re_id;
+              const ecat = picked.id.re_category;
+              if (!eid) return;
+              if (ecat === 'satellite') {
+                const s = satellites.value.find(x => x.id === eid); if (s) { selected.value = s; selectedType.value = 'satellite'; }
+              } else if (ecat === 'earthquake') {
+                const e = earthquakes.value.find(x => x.id === eid); if (e) { selected.value = e; selectedType.value = 'earthquake'; }
+              } else if (ecat === 'volcano') {
+                const v = volcanoes.value.find(x => x.id === eid); if (v) { selected.value = v; selectedType.value = 'volcano'; }
+              }
+            }
+          }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+        };
+
+        const COLORS = {
+          satellite: Cesium.Color.fromCssColorString('#22d3ee'),
+          satelliteHi: Cesium.Color.fromCssColorString('#fde047'),
+          satelliteStarlink: Cesium.Color.fromCssColorString('#94a3b8'),
+          lightningPos: Cesium.Color.fromCssColorString('#f97316'),
+          lightningNeg: Cesium.Color.fromCssColorString('#60a5fa'),
+          earthquake: Cesium.Color.fromCssColorString('#ef4444'),
+          earthquakeBig: Cesium.Color.fromCssColorString('#dc2626'),
+          wildfire: Cesium.Color.fromCssColorString('#f59e0b'),
+          volcanoErupt: Cesium.Color.fromCssColorString('#dc2626'),
+          volcanoElev: Cesium.Color.fromCssColorString('#f59e0b'),
+          volcanoNormal: Cesium.Color.fromCssColorString('#64748b'),
+        };
+
+        const renderAll = () => {
+          if (!viewer.value) return;
+          // Satellites
+          satSource.entities.removeAll();
+          orbitSource.entities.removeAll();
+          if (layers.value.satellites) {
+            for (const sat of satellites.value) {
+              if (!sat.position) continue;
+              const isStarlink = sat.category === 'starlink';
+              const isHeadliner = ['ISS', 'TIANGONG', 'HUBBLE', 'CSS', 'HST'].some(h => sat.name.toUpperCase().includes(h));
+              const color = isStarlink ? COLORS.satelliteStarlink : (sat.category === 'hubble' || sat.category === 'webb' ? COLORS.satelliteHi : COLORS.satellite);
+              const pos = Cesium.Cartesian3.fromDegrees(sat.position.lon, sat.position.lat, sat.position.alt_km * 1000);
+              const size = isStarlink ? 4 : isHeadliner ? 11 : 7;
+              const ent = satSource.entities.add({
+                position: pos,
+                point: { pixelSize: size, color, outlineColor: Cesium.Color.WHITE.withAlpha(0.4), outlineWidth: 1 },
+                label: layers.value.satellitesLabels && isHeadliner ? {
+                  text: sat.name, font: '11px monospace', fillColor: Cesium.Color.WHITE,
+                  outlineColor: Cesium.Color.BLACK, outlineWidth: 2,
+                  style: Cesium.LabelStyle.FILL_AND_OUTLINE, pixelOffset: new Cesium.Cartesian2(0, -16),
+                } : undefined,
+              });
+              ent.re_id = sat.id; ent.re_category = 'satellite';
+            }
+          }
+          // Lightning
+          lightSource.entities.removeAll();
+          if (layers.value.lightning) {
+            const strikes = lightning.value.slice(-1500);
+            for (const s of strikes) {
+              const color = s.polarity === 'positive' ? COLORS.lightningPos : COLORS.lightningNeg;
+              const ent = lightSource.entities.add({
+                position: Cesium.Cartesian3.fromDegrees(s.lon, s.lat, s.alt_km * 1000),
+                point: { pixelSize: 4, color: color.withAlpha(0.85), outlineWidth: 1 },
+              });
+              ent.re_id = s.id; ent.re_category = 'lightning';
+            }
+          }
+          // Earthquakes
+          eqSource.entities.removeAll();
+          if (layers.value.earthquakes) {
+            for (const eq of earthquakes.value) {
+              if (eq.mag < 2.5 && eq.depth_km < 50) continue;
+              const size = Math.min(28, Math.max(4, eq.mag * 3));
+              const color = eq.mag >= 6 ? COLORS.earthquakeBig : COLORS.earthquake;
+              const ent = eqSource.entities.add({
+                position: Cesium.Cartesian3.fromDegrees(eq.lon, eq.lat, 0),
+                point: { pixelSize: size, color: color.withAlpha(0.75), outlineColor: Cesium.Color.WHITE.withAlpha(0.6), outlineWidth: 1 },
+              });
+              ent.re_id = eq.id; ent.re_category = 'earthquake';
+            }
+          }
+          // Wildfires
+          fireSource.entities.removeAll();
+          if (layers.value.wildfires) {
+            const fires = wildfires.value.filter(f => f.confidence !== 'low').slice(0, 3000);
+            for (const f of fires) {
+              const size = Math.min(8, Math.max(2, Math.log10(f.frp_mw + 1) * 2.5));
+              const ent = fireSource.entities.add({
+                position: Cesium.Cartesian3.fromDegrees(f.lon, f.lat, 0),
+                point: { pixelSize: size, color: COLORS.wildfire.withAlpha(0.85), outlineWidth: 0.5 },
+              });
+              ent.re_id = f.id; ent.re_category = 'wildfire';
+            }
+          }
+          // Volcanoes
+          volSource.entities.removeAll();
+          if (layers.value.volcanoes) {
+            for (const v of volcanoes.value) {
+              const color = v.activity_level === 'erupting' ? COLORS.volcanoErupt : v.activity_level === 'elevated' ? COLORS.volcanoElev : COLORS.volcanoNormal;
+              const ent = volSource.entities.add({
+                position: Cesium.Cartesian3.fromDegrees(v.lon, v.lat, v.elevation_m || 0),
+                point: { pixelSize: v.activity_level === 'erupting' ? 12 : 8, color, outlineColor: Cesium.Color.WHITE.withAlpha(0.6), outlineWidth: 1 },
+              });
+              ent.re_id = v.id; ent.re_category = 'volcano';
+            }
+          }
+        };
+
+        watch([satellites, lightning, earthquakes, wildfires, volcanoes, layers], renderAll, { deep: false });
+
+        // ---- WebSocket ----
+        const connect = () => {
+          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const url = `${proto}//${location.host}/ws`;
+          socket = new WebSocket(url);
+          socket.onopen = () => { wsConnected.value = true; reconnectAttempt = 0; socket.send(JSON.stringify({ subscribe: ['*'] })); };
+          socket.onmessage = (ev) => {
+            try {
+              const msg = JSON.parse(ev.data);
+              wsLastMessage.value = Date.now();
+              if (msg.topic === 'meta' && msg.data) { sources.value = msg.data.status || {}; counts.value = msg.data.counts || {}; uptime.value = (wsLastMessage.value - (window._t0 || wsLastMessage.value)) / 1000; }
+              if (msg.topic === 'lightning') lightning.value = msg.data || [];
+              if (msg.topic === 'satellites') satellites.value = msg.data || [];
+              if (msg.topic === 'earth' && msg.data) {
+                if (msg.data.earthquakes) earthquakes.value = msg.data.earthquakes;
+                if (msg.data.wildfires) wildfires.value = msg.data.wildfires;
+                if (msg.data.volcanoes) volcanoes.value = msg.data.volcanoes;
+              }
+              if (msg.topic === 'solar') solar.value = msg.data;
+            } catch (e) { console.warn('bad ws message', e); }
+          };
+          socket.onclose = () => {
+            wsConnected.value = false;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            const delay = Math.min(1000 * Math.pow(1.6, reconnectAttempt), 30000);
+            reconnectAttempt++;
+            reconnectTimer = setTimeout(connect, delay);
+          };
+          socket.onerror = () => { try { socket.close(); } catch {} };
+        };
+
+        const bootstrap = async () => {
+          try {
+            const r = await fetch('/api/meta');
+            if (r.ok) {
+              const d = await r.json();
+              sources.value = d.status || {};
+              counts.value = d.counts || {};
+            }
+            const h = await fetch('/api/../healthz');
+            if (h.ok) {
+              const d = await h.json();
+              uptime.value = d.uptime_seconds;
+              version.value = d.version;
+              sources.value = d.sources;
+              counts.value = d.counts;
+            }
+          } catch (e) { console.warn('bootstrap failed', e); }
+        };
+
+        onMounted(() => {
+          initCesium();
+          connect();
+          bootstrap();
+        });
+
+        onBeforeUnmount(() => {
+          if (socket) try { socket.close(); } catch {}
+          if (viewer.value) viewer.value.destroy();
+        });
+
+        // Format uptime
+        const uptimeFmt = computed(() => {
+          const s = Math.floor(uptime.value);
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          const sec = s % 60;
+          return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+        });
+
+        return {
+          wsConnected, uptime: uptimeFmt, version, sources, satellites, lightning, earthquakes, wildfires, volcanoes, solar,
+          tab, tabs, earthTab, windowMin, layers, layerDefs, selected, selectedType, globeEl,
+          prominentSatellites, lightningStats, latestLightning, recentLightningCount, filteredEqs, eqStats, bigFires, wildfireStats, eruptingVolcanoes, elevatedVolcanoes, kpColor, auroraBar,
+          formatTime, timeAgo, categoryLabel, earthLabel, magClass, orbitMinutes, toggleLayer, select, selectEq, selectVolcano, clearSelection,
+        };
+      }
+    });
+
+    app.mount('#app');
+  </script>
+</body>
+</html>

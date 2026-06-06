@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Realtime Earth — WebGL Diagnostic</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace;
+        background: #0b1220;
+        color: #e2e8f0;
+        margin: 0;
+        padding: 32px;
+      }
+      h1 { color: #22d3ee; margin: 0 0 16px; font-size: 18px; }
+      .row { padding: 6px 0; border-bottom: 1px solid #1e293b; }
+      .k { color: #94a3b8; display: inline-block; min-width: 260px; }
+      .v { color: #f1f5f9; }
+      .ok { color: #4ade80; }
+      .bad { color: #f87171; font-weight: bold; }
+      .warn { color: #fbbf24; }
+      pre {
+        background: #050a18;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        padding: 12px;
+        overflow-x: auto;
+      }
+      a { color: #22d3ee; }
+    </style>
+  </head>
+  <body>
+    <h1>Realtime Earth — WebGL Diagnostic</h1>
+    <p style="color:#94a3b8">
+      This page does not use Cesium. It probes raw WebGL to find out why the
+      3D globe isn't rendering.
+    </p>
+    <div id="out">probing…</div>
+
+    <h2 style="margin-top:32px;color:#22d3ee;font-size:16px">What to do</h2>
+    <ol style="color:#cbd5e1">
+      <li>If <span class="bad">WebGL is not available</span> — open
+        <code>chrome://settings/system</code> → enable "Use graphics
+        acceleration when available", then restart the browser.</li>
+      <li>If <span class="bad">Vendor / Renderer</span> shows "Software" or
+        "SwiftShader" — your GPU/driver isn't being used. Try another browser
+        (Edge / Firefox) or update your GPU driver.</li>
+      <li>If everything is <span class="ok">OK</span> here but the globe is
+        still black — open the main page, press F12 → Console, and look for
+        red Cesium errors.</li>
+    </ol>
+
+    <h2 style="margin-top:32px;color:#22d3ee;font-size:16px">Raw info</h2>
+    <pre id="raw"></pre>
+
+    <script>
+      const out = document.getElementById("out");
+      const raw = document.getElementById("raw");
+      const rows = [];
+      function row(k, v, cls) {
+        rows.push(
+          `<div class="row"><span class="k">${k}</span><span class="v ${cls || ""}">${v}</span></div>`,
+        );
+      }
+
+      // --- 1. User agent / browser ---------------------------------------
+      row("User agent", navigator.userAgent);
+      row("Platform", navigator.platform);
+      row("Hardware concurrency", navigator.hardwareConcurrency);
+
+      // --- 2. WebGL 2 / WebGL 1 ------------------------------------------
+      function probeGL(typeName, ctxAttrs) {
+        const c = document.createElement("canvas");
+        let gl = null;
+        try {
+          gl = c.getContext(typeName, ctxAttrs);
+        } catch (e) {
+          return { ctx: null, error: String(e) };
+        }
+        if (!gl) return { ctx: null, error: "getContext returned null" };
+        try {
+          const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+          const renderer = dbg
+            ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+            : gl.getParameter(gl.RENDERER);
+          const vendor = dbg
+            ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)
+            : gl.getParameter(gl.VENDOR);
+          const version = gl.getParameter(gl.VERSION);
+          const glsl = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+          const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+          return { ctx: gl, renderer, vendor, version, glsl, maxTex };
+        } catch (e) {
+          return { ctx: gl, error: String(e) };
+        }
+      }
+
+      const gl2 = probeGL("webgl2", { alpha: true, antialias: true });
+      const gl1 = probeGL("webgl", { alpha: true, antialias: true });
+
+      if (gl2.ctx) {
+        row(
+          "WebGL 2",
+          `OK — ${gl2.renderer}`,
+          /software|swiftshader|llvmpipe|microsoft basic/i.test(gl2.renderer)
+            ? "warn"
+            : "ok",
+        );
+        row("WebGL 2 vendor", gl2.vendor);
+        row("WebGL 2 version", gl2.version);
+        row("GLSL", gl2.glsl);
+        row("Max texture size", gl2.maxTex);
+      } else {
+        row("WebGL 2", `FAIL — ${gl2.error}`, "bad");
+      }
+
+      if (gl1.ctx) {
+        row(
+          "WebGL 1",
+          `OK — ${gl1.renderer}`,
+          /software|swiftshader|llvmpipe|microsoft basic/i.test(gl1.renderer)
+            ? "warn"
+            : "ok",
+        );
+      } else {
+        row("WebGL 1", `FAIL — ${gl1.error}`, "bad");
+      }
+
+      if (!gl2.ctx && !gl1.ctx) {
+        row(
+          "Verdict",
+          "WebGL is unavailable. Hardware acceleration is off or blocked by an extension.",
+          "bad",
+        );
+      } else if (
+        (gl2.ctx && /software|swiftshader|llvmpipe/i.test(gl2.renderer)) ||
+        (gl1.ctx && /software|swiftshader|llvmpipe/i.test(gl1.renderer))
+      ) {
+        row(
+          "Verdict",
+          "WebGL is on, but the browser is using SOFTWARE rendering. The globe will be very slow or fail.",
+          "warn",
+        );
+      } else {
+        row("Verdict", "WebGL is healthy — globe should render.", "ok");
+      }
+
+      // --- 3. Cesium asset reachability (HEAD requests) ------------------
+      async function head(url) {
+        try {
+          const r = await fetch(url, { method: "HEAD" });
+          return `${r.status} ${r.ok ? "OK" : "FAIL"}`;
+        } catch (e) {
+          return `ERR ${e.message}`;
+        }
+      }
+      (async () => {
+        const checks = await Promise.all([
+          head("/cesium/Cesium.js").then((s) =>
+            row("GET /cesium/Cesium.js", s, /\bOK\b/.test(s) ? "ok" : "bad"),
+          ),
+          head("/cesium/Workers/transferTypedArrayTest.js").then((s) =>
+            row("GET /cesium/Workers/...", s, /\bOK\b/.test(s) ? "ok" : "bad"),
+          ),
+          head("/cesium/ThirdParty/basis_transcoder.wasm").then((s) =>
+            row(
+              "GET /cesium/ThirdParty/basis_transcoder.wasm",
+              s,
+              /\bOK\b/.test(s) ? "ok" : "bad",
+            ),
+          ),
+          head("/cesium/Assets/Textures/NaturalEarthII/tilemapresource.xml").then(
+            (s) =>
+              row(
+                "GET NaturalEarthII tilemapresource",
+                s,
+                /\bOK\b/.test(s) ? "ok" : "bad",
+              ),
+          ),
+        ]);
+        out.innerHTML = rows.join("");
+        raw.textContent = JSON.stringify({ gl2, gl1 }, null, 2);
+      })();
+
+      out.innerHTML = rows.join("");
+      raw.textContent = JSON.stringify({ gl2, gl1 }, null, 2);
+    </script>
+  </body>
+</html>

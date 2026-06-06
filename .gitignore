@@ -1,0 +1,58 @@
+# =============================================================================
+# Realtime Earth — .gitignore
+# 注意：frontend/dist 是预先构建好的前端产物 (含 Cesium 5MB)，
+# 必须保留在 repo 里，这样用户解压后直接 `python start.py` 不需要再 `npm install`
+# =============================================================================
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Backend build artifacts (not the frontend dist!)
+backend/build/
+backend/dist/
+
+# ----- Node -----
+node_modules/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# DO NOT ignore frontend/dist — it's our pre-built artifact for zero-build distribution
+!frontend/dist/
+!frontend/dist/**
+
+# ----- Editors / OS -----
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ----- Project caches -----
+backend/.cache/
+frontend/.cache/
+
+# ----- Docker -----
+*.pid
+docker-compose.override.yml
+
+# ----- Distribution artifacts (don't commit the zip) -----
+realtime-earth-*.zip
