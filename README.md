@@ -12,11 +12,22 @@
 [![GitHub stars](https://img.shields.io/github/stars/miaochengy-pngu/realtime-earth?style=social)](https://github.com/miaochengy-pngu/realtime-earth/stargazers)
 
 <p align="center">
-  <a href="docs/preview.mp4"><img src="docs/preview.gif" alt="Realtime Earth — live 3D globe with satellites, lightning, earthquakes, wildfires, volcanoes" width="100%"></a>
+  <table>
+    <tr>
+      <th align="center">📷 Static screenshot</th>
+      <th align="center">🎬 8-second live capture</th>
+    </tr>
+    <tr>
+      <td align="center"><a href="docs/preview.png"><img src="docs/preview.png" alt="Realtime Earth — 3D globe screenshot" width="480"></a></td>
+      <td align="center"><a href="docs/preview.mp4"><img src="docs/preview.gif" alt="Realtime Earth — live 3D globe with satellites, lightning, earthquakes, wildfires, volcanoes" width="480"></a></td>
+    </tr>
+    <tr>
+      <td align="center"><sub>2560×1600 · 924 KB</sub></td>
+      <td align="center"><sub>480×300 · 1.5 MB · <a href="docs/preview.mp4">MP4 (572 KB)</a></sub></td>
+    </tr>
+  </table>
 </p>
-<p align="center">
-  <sub>👆 <a href="docs/preview.mp4">Click for full-resolution MP4 (572 KB)</a> · <a href="docs/preview.png">or static PNG (924 KB)</a></sub>
-</p>
+<p align="center"><sub>👆 GIF is a recording, not interactive — but the <b>live app</b> at <code>localhost:8000</code> is real CesiumJS: drag to rotate, scroll to zoom, click any satellite ⚡</sub></p>
 
 ---
 
