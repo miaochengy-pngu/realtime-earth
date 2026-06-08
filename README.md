@@ -11,7 +11,12 @@
 [![No Docker](https://img.shields.io/badge/Runs_without-Docker-blueviolet)](#-quick-start)
 [![GitHub stars](https://img.shields.io/github/stars/miaochengy-pngu/realtime-earth?style=social)](https://github.com/miaochengy-pngu/realtime-earth/stargazers)
 
-![Realtime Earth — live 3D globe with satellites, lightning, earthquakes, wildfires, volcanoes](docs/preview.png)
+<p align="center">
+  <a href="docs/preview.mp4"><img src="docs/preview.gif" alt="Realtime Earth — live 3D globe with satellites, lightning, earthquakes, wildfires, volcanoes" width="100%"></a>
+</p>
+<p align="center">
+  <sub>👆 <a href="docs/preview.mp4">Click for full-resolution MP4 (572 KB)</a> · <a href="docs/preview.png">or static PNG (924 KB)</a></sub>
+</p>
 
 ---
 
